@@ -1,0 +1,1231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Savage Traveler — Route Explorer (No Star)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Mapbox GL core -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+
+  <!-- Mapbox Geocoder (with CDN fallback) -->
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.1/mapbox-gl-geocoder.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-geocoder@5.0.1/dist/mapbox-gl-geocoder.css" />
+  <script>
+    (function loadGeocoder() {
+      var s = document.createElement('script');
+      s.src = 'https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.1/mapbox-gl-geocoder.min.js';
+      s.async = true;
+      s.onerror = function () {
+        var f = document.createElement('script');
+        f.src = 'https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-geocoder@5.0.1/dist/mapbox-gl-geocoder.min.js';
+        f.async = true;
+        document.head.appendChild(f);
+      };
+      document.head.appendChild(s);
+    })();
+  </script>
+
+  <!-- Other libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    #map { position: relative; }
+
+    :root{
+      --card-bg: rgba(255,255,255,.96);
+      --shadow: 0 2px 10px rgba(0,0,0,.10);
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --pill: 999px;
+      --panelW: 360px;
+      --c-rest:#facc15;
+      --c-roadside:#3b82f6;
+      --c-welcome:#8b5e3c;
+      --c-other:#9ca3af;
+    }
+    .ui {
+      position: absolute; z-index: 3; top: 12px; left: 12px; right: 12px;
+      display: grid; grid-template-columns: var(--panelW); gap: 12px;
+      font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial; color: var(--text);
+      pointer-events: none;
+    }
+    .panel {
+      background: var(--card-bg); border-radius: 14px; padding: 12px; box-shadow: var(--shadow);
+      border: 1px solid var(--border); max-height: calc(100vh - 24px); overflow: auto;
+      pointer-events: auto;
+    }
+    .stat { color: var(--muted) }
+    button {
+      padding:8px 12px; border:1px solid var(--border); background:#fff; border-radius:10px; cursor:pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    button:disabled { opacity:.6; cursor:not-allowed }
+    .btn-sm { padding:6px 10px; font-size:13px; border-radius:8px; }
+
+    .stack { display:flex; flex-direction:column; gap:10px }
+    .input-row { display:flex; align-items:center; gap:8px }
+    .dot { width:10px; height:10px; border-radius:50%; background:#34a853; flex:0 0 10px }
+    .pin { width:12px; height:12px; border-radius:50%; background:#ea4335; position:relative; flex:0 0 12px }
+    .pin:after{ content:""; position:absolute; left:50%; top:100%; width:2px; height:8px; background:#ea4335; transform:translateX(-50%); border-radius:1px }
+    .slot { flex:1 }
+    .pill {
+      display:flex; align-items:center; background:#fff; border:1px solid var(--border);
+      border-radius: var(--pill); padding: 8px 12px; box-shadow: var(--shadow);
+    }
+    .pill .mapboxgl-ctrl-geocoder { min-width:100%; border:none; box-shadow:none }
+    .mapboxgl-ctrl-geocoder--input { height: 28px !important; padding:0 !important; border:none !important; box-shadow:none !important; font-size:14px !important; }
+    .mapboxgl-ctrl-geocoder--icon, .mapboxgl-ctrl-geocoder--icon-loading { display:none !important; }
+
+    .mini-links { display:flex; gap:8px; margin-left:22px }
+    .divider { height:1px; background:var(--border); margin:6px 0 }
+    .primary-row { display:flex; gap:8px; }
+    .primary { flex:1; border:1px solid var(--border); background:#1a73e8; color:#fff; border-radius:12px; padding:10px 14px; font-weight:600; }
+
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .row input[type="number"]{ width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:8px }
+
+    .minutes-row { display:flex; align-items:center; gap:10px; }
+    .minutes-row input[type="number"] { width:90px; }
+    .minutes-label { font-size:12px; line-height:1.15; color:var(--muted); }
+
+    .legend { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .legend .item { display:flex; align-items:center; gap:6px; font-size:12px; color: #374151 }
+    .legend .swatch { width:10px; height:10px; border-radius:50%; border:1px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,.1) }
+    .swatch.rest    { background: var(--c-rest); }
+    .swatch.road    { background: var(--c-roadside); }
+    .swatch.welcome { background: var(--c-welcome); }
+    .swatch.other   { background: var(--c-other); }
+
+    .filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .filters label { display:flex; align-items:center; gap:6px; font-size:12px; border:1px solid var(--border);
+                     padding:6px 10px; border-radius:12px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.04) }
+    .dot-rest    { width:8px; height:8px; border-radius:50%; background:var(--c-rest) }
+    .dot-road    { width:8px; height:8px; border-radius:50%; background:var(--c-roadside) }
+    .dot-welcome { width:8px; height:8px; border-radius:50%; background:var(--c-welcome) }
+    .dot-other   { width:8px; height:8px; border-radius:50%; background:var(--c-other) }
+
+    .sel-wrap { border:1px solid var(--border); background:#fff; border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.04); max-height:220px; overflow:auto; }
+    .sel-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px dashed #eee }
+    .sel-row:last-child { border-bottom:none }
+    .sel-name { font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+    .tag { font-size:12px; padding:2px 6px; border-radius:999px; background:#eef }
+    .sel-remove { font-size:12px; padding:4px 8px; border-radius:8px }
+
+    .error { position: absolute; left: 12px; bottom: 12px; z-index: 4;
+             background:#fff; border-left:4px solid #c00; padding:8px 10px; border-radius:8px;
+             max-width: min(520px, 90vw); display:none; box-shadow: var(--shadow) }
+    .linky { font-size:12px; color:#1a73e8; background:none; border:none; padding:0; cursor:pointer }
+
+    .toast {
+      position: fixed; left: 50%; transform: translateX(-50%) translateY(10px);
+      bottom: 20px; background:#111827; color:#fff; padding:10px 14px; border-radius:999px;
+      box-shadow: 0 6px 16px rgba(0,0,0,.2); opacity:0; pointer-events:none; transition: opacity .18s, transform .18s;
+      z-index: 6; font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    .toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
+
+    .busy {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.25); z-index: 7;
+    }
+    .busy .card {
+      background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px 16px; box-shadow: var(--shadow);
+      display:flex; align-items:center; gap:10px; font: 14px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    .spinner {
+      width:16px; height:16px; border-radius:50%; border:2px solid #e5e7eb; border-top-color:#f59e0b; animation:spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="ui">
+    <div class="panel">
+      <div class="stack">
+        <!-- Start -->
+        <div class="input-row">
+          <div class="dot" aria-hidden="true"></div>
+          <div class="slot pill"><div id="geo-start"></div></div>
+        </div>
+        <div class="mini-links">
+          <button id="useClickStart" class="btn-sm">Pick start on map</button>
+          <button id="useMyLocation" class="btn-sm">Use my location</button>
+        </div>
+
+        <!-- End -->
+        <div class="input-row">
+          <div class="pin" aria-hidden="true"></div>
+          <div class="slot pill"><div id="geo-end"></div></div>
+        </div>
+        <div class="mini-links">
+          <button id="useClickEnd" class="btn-sm">Pick end on map</button>
+        </div>
+
+        <!-- Waypoints container -->
+        <div id="waypoints"></div>
+
+        <!-- Add destination -->
+        <div class="input-row">
+          <div style="width:12px; height:12px; border-radius:50%; background:#999; flex:0 0 12px" aria-hidden="true"></div>
+          <button id="addWp" class="swap-btn">＋ Add destination</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Minutes -->
+        <div class="minutes-row">
+          <input id="minutes" type="number" min="5" step="5" value="20" />
+          <div class="minutes-label">Distance from route<br>(minutes, one-way)</div>
+        </div>
+
+        <div class="row stat" id="summary">Distance/ETA will appear here</div>
+
+        <div class="divider"></div>
+
+        <!-- Primary action -->
+        <div class="primary-row">
+          <button id="route" class="primary">Get route</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Legend -->
+        <div class="legend">
+          <div class="item"><span class="swatch rest"></span> Rest Area</div>
+          <div class="item"><span class="swatch road"></span> Roadside Attraction</div>
+          <div class="item"><span class="swatch welcome"></span> Welcome Sign</div>
+          <div class="item"><span class="swatch other"></span> Other</div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters" id="filters">
+          <label><input type="checkbox" data-cat="Rest Area" checked/><span class="dot-rest"></span>Rest Area</label>
+          <label><input type="checkbox" data-cat="Roadside Attraction" checked/><span class="dot-road"></span>Roadside</label>
+          <label><input type="checkbox" data-cat="Welcome Sign" checked/><span class="dot-welcome"></span>Welcome</label>
+          <label><input type="checkbox" data-cat="Other" checked/><span class="dot-other"></span>Other</label>
+        </div>
+
+        <div class="mini-links" style="gap:12px">
+          <button id="reloadPois" class="linky" title="Fetch fresh copy from Google Sheets">Reload POIs</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Selected list -->
+        <div class="row"><strong>Selected attractions</strong><span class="stat" id="selCount">(0)</span></div>
+        <div class="sel-wrap"><div id="selList"></div></div>
+        <div class="mini-links" style="gap:12px">
+          <button id="applySel" class="linky">Update route with selected</button>
+          <button id="clearSel" class="linky">Clear selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- toasts / busy -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="busy" class="busy" aria-hidden="true">
+    <div class="card"><div class="spinner"></div><div id="busyMsg">One sec while we create your adventure…</div></div>
+  </div>
+
+  <div id="error" class="error"></div>
+
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2F2YWdldHJhdmVsZXIiLCJhIjoiY21mZzl2dXVvMDBmODJrcHVzbno1YzRkZyJ9.fGvMUrtwKnDgTf2qmOeQTA';
+    if (mapboxgl.setTelemetryEnabled) { mapboxgl.setTelemetryEnabled(false); }
+
+    const AVERAGE_SPEED_MPH = 55;
+    const MAX_GEO_WAYPOINTS = 5;
+    const PROFILE = 'driving';
+
+    const POI_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQptJKid_rUcBSdL2fzwSU2RhG3NqeiiRL_0OQ1yRleFNwBbZWxuMKzPqiAhYn15sfNkO8NzDgAZ0Qg/pub?output=csv';
+    const POI_CACHE_KEY = 'poi_cache_v2::' + POI_URL;
+    const POI_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+    let start = null, end = null, routeFeature = null;
+    let startText = '', endText = '';
+    let baseDurationSec = 0, baseDistanceM = 0;
+
+    let pois = [];
+    let filteredPois = [];
+    let poiWaypoints = [];
+    let waypoints = [];
+    let activeCats = new Set(['Rest Area','Roadside Attraction','Welcome Sign','Other']);
+
+    const $minutes = document.getElementById('minutes');
+    const $summary = document.getElementById('summary');
+    const $error = document.getElementById('error');
+    const $filters = document.getElementById('filters');
+    const $wpContainer = document.getElementById('waypoints');
+    const $selList = document.getElementById('selList');
+    const $selCount = document.getElementById('selCount');
+    const $routeBtn = document.getElementById('route');
+    const $toast = document.getElementById('toast');
+    const $busy = document.getElementById('busy');
+    const $busyMsg = document.getElementById('busyMsg');
+    let toastTimer = null;
+
+    function showErr(msg){ $error.style.display='block'; $error.textContent = msg; console.error(msg); }
+    function clearErr(){ $error.style.display='none'; $error.textContent=''; }
+
+    function showToast(msg, ms){
+      if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+      $toast.textContent = msg || '';
+      $toast.classList.add('show');
+      toastTimer = setTimeout(function(){ $toast.classList.remove('show'); toastTimer = null; }, ms || 1000);
+    }
+    function showBusy(msg){
+      $busyMsg.textContent = msg || 'One sec while we create your adventure…';
+      $busy.style.display = 'flex';
+      $busy.setAttribute('aria-hidden', 'false');
+    }
+    function hideBusy(){
+      $busy.style.display = 'none';
+      $busy.setAttribute('aria-hidden', 'true');
+    }
+    function updateRouteButtonLabel(){
+      $routeBtn.textContent = routeFeature ? 'Update route' : 'Get route';
+    }
+
+    if (!mapboxgl.supported()) { showErr('WebGL is disabled or unsupported in this browser.'); }
+
+    /* Map */
+    const map = new mapboxgl.Map({
+      container: 'map', style: 'mapbox://styles/mapbox/streets-v12',
+      center: [-98.5795, 39.8283], zoom: 4
+    });
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+    // Sidebar-aware padding
+    function mapPadding(){
+      const ui = document.querySelector('.ui');
+      const panel = document.querySelector('.panel');
+      const vw = map.getContainer().clientWidth;
+      let left = 60;
+      if (ui && panel) {
+        const uiBox = ui.getBoundingClientRect();
+        const panelW = panel.getBoundingClientRect().width;
+        left = Math.round(uiBox.left + panelW + 12);
+        left = Math.min(left, Math.round(vw * 0.45));
+        left = Math.max(left, 60);
+      }
+      return { top: 60, right: 60, bottom: 60, left: left };
+    }
+    function maybeZoomToStops(){
+      if (!start || !end) return;
+      const b = new mapboxgl.LngLatBounds();
+      b.extend(start); b.extend(end);
+      map.fitBounds(b, { padding: mapPadding(), duration: 600 });
+    }
+
+    /* Route version + caches */
+    let routeVersion = 0;
+    let detourCache = {};   // spur/detour cache per routeVersion
+    let variantCache = {};  // full-variant cache per routeVersion
+
+    // NEW: baseline cache for "current selections" route
+    let baselineCache = {}; // key -> {feature, durationS, distanceM}
+
+    map.on('load', function(){
+      // --- Removed gold star image and symbol layer ---
+
+      map.addSource('route', { type:'geojson', data: emptyFC() });
+      map.addLayer({ id:'route', type:'line', source:'route',
+        paint:{ 'line-color':'#3b9ddd', 'line-width':4 } });
+
+      map.addSource('stops', { type:'geojson', data: emptyFC() });
+      map.addLayer({ id:'stops', type:'circle', source:'stops',
+        paint:{ 'circle-radius':6, 'circle-color':'#e74c3c', 'circle-stroke-width':1, 'circle-stroke-color':'#fff' }});
+      map.addLayer({ id:'stops-labels', type:'symbol', source:'stops',
+        layout:{ 'text-field':['get','label'], 'text-size':12, 'text-offset':[0,-1.2], 'text-allow-overlap': true }});
+
+      map.addSource('pois', { type:'geojson', data: emptyFC() });
+      map.addLayer({ id:'pois', type:'circle', source:'pois',
+        paint:{
+          'circle-radius': 5,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#fff',
+          'circle-color': [
+            'match', ['get','category'],
+            'Rest Area',            '#facc15',
+            'Roadside Attraction',  '#3b82f6',
+            'Welcome Sign',         '#8b5e3c',
+            'Other',                '#9ca3af',
+            '#9ca3af'
+          ]
+        }
+      });
+
+      // Selected POIs (glow-only highlight)
+      map.addSource('pois-sel', { type:'geojson', data: emptyFC() });
+      // Outer soft glow
+      map.addLayer({
+        id:'pois-sel-glow-outer', type:'circle', source:'pois-sel',
+        paint:{ 'circle-radius': 16, 'circle-color': '#f59e0b', 'circle-opacity': 0.30, 'circle-blur': 0.9 }
+      });
+      // Inner bright glow
+      map.addLayer({
+        id:'pois-sel-glow', type:'circle', source:'pois-sel',
+        paint:{ 'circle-radius': 10, 'circle-color': '#f59e0b', 'circle-opacity': 0.55, 'circle-blur': 0.6 }
+      });
+      // Core dot so it's visible on any basemap
+      map.addLayer({
+        id:'pois-sel-core', type:'circle', source:'pois-sel',
+        paint:{ 'circle-radius': 4, 'circle-color': '#111827', 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff' }
+      });
+
+      /* Detour spur source/layers */
+      map.addSource('detour', { type:'geojson', data: emptyFC() });
+      map.addLayer({
+        id:'detour-line', type:'line', source:'detour',
+        paint:{
+          'line-color': '#111827',
+          'line-width': 2,
+          'line-dasharray': [2,2],
+          'line-opacity': 0.9
+        }
+      });
+      map.addLayer({
+        id:'detour-snap', type:'circle', source:'detour',
+        filter:['==', ['get','kind'], 'snap'],
+        paint:{
+          'circle-radius': 4,
+          'circle-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#111827'
+        }
+      });
+
+      /* Full variant preview (whole route dashed) */
+      map.addSource('variant', { type:'geojson', data: emptyFC() });
+      map.addLayer({
+        id:'variant-line', type:'line', source:'variant',
+        paint:{
+          'line-color': '#f59e0b',
+          'line-width': 3,
+          'line-dasharray': [1.5, 1.5],
+          'line-opacity': 0.9
+        }
+      });
+
+      function clearDetour(){
+        const s = map.getSource('detour'); if (s) s.setData(emptyFC());
+      }
+      function clearVariant(){
+        const s = map.getSource('variant'); if (s) s.setData(emptyFC());
+      }
+      function crowDetourForFeature(f, baseFeature){
+        const base = baseFeature || routeFeature;
+        if (!base || !f || !f.geometry || f.geometry.type !== 'Point') { clearDetour(); return; }
+        try{
+          const p = turf.point(f.geometry.coordinates);
+          const np = turf.nearestPointOnLine(base, p, { units: 'miles' });
+          const snap = np && np.geometry && Array.isArray(np.geometry.coordinates) ? np.geometry.coordinates : null;
+          if (!snap) { clearDetour(); return; }
+          const fc = {
+            type:'FeatureCollection',
+            features: [
+              { type:'Feature', properties:{ kind:'line' }, geometry:{ type:'LineString', coordinates: [f.geometry.coordinates, snap] } },
+              { type:'Feature', properties:{ kind:'snap' }, geometry:{ type:'Point', coordinates: snap } }
+            ]
+          };
+          map.getSource('detour').setData(fc);
+        }catch(_){ clearDetour(); }
+      }
+
+      /* Interaction */
+      const hoverPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+      let clickPopup = null;
+
+      map.on('mouseenter', 'pois', function(){ map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'pois', function(){
+        map.getCanvas().style.cursor = '';
+        hoverPopup.remove();
+        if (!clickPopup) { clearDetour(); clearVariant(); }
+      });
+
+      map.on('mousemove', 'pois', function(e){
+        const f = e.features && e.features[0]; if (!f) return;
+        const coord = f.geometry.coordinates.slice();
+        hoverPopup.setLngLat(coord).setHTML(poiHoverHtml(f)).addTo(map);
+        crowDetourForFeature(f); // lite dashed crow-line
+      });
+
+      map.on('click', 'pois', async function(e){
+        const f = e.features && e.features[0]; if (!f) return;
+        if (clickPopup) clickPopup.remove();
+        const coord = f.geometry.coordinates.slice();
+        const id = f.properties.id;
+        const already = poiWaypoints.some(p => p.id === id);
+
+        // initial popup
+        clickPopup = new mapboxgl.Popup({ closeButton: true, closeOnClick: true, offset: 14 })
+          .setLngLat(coord).setHTML(poiActionHtml(f, already, /*wantsMeta*/true)).addTo(map);
+        clickPopup.on('close', function(){ clickPopup = null; clearDetour(); clearVariant(); });
+
+        // If no route yet, keep crow-line and bail
+        if (!routeFeature) { crowDetourForFeature(f); return; }
+
+        // Use baseline of "current selections" for all previews
+        try{
+          const baseline = await getPreviewBaseline();
+          await previewDriveDetour(f, baseline); // spur detour vs current selections
+        }catch(_){
+          const baseline = await getPreviewBaseline().catch(()=>null);
+          crowDetourForFeature(f, baseline && baseline.feature);
+          const metaEl = document.getElementById('detourMeta-'+id);
+          if (metaEl) metaEl.textContent = 'Couldn’t load drive detour; showing straight-line distance.';
+        }
+      });
+
+      // Add/remove/select/variant actions
+      document.body.addEventListener('click', function(evt){
+        const addBtn = evt.target.closest && evt.target.closest('[data-add-poi]');
+        const remBtn = evt.target.closest && evt.target.closest('[data-remove-poi]');
+        const varBtn = evt.target.closest && evt.target.closest('[data-preview-variant]');
+        if (!addBtn && !remBtn && !varBtn) return;
+
+        if (varBtn) {
+          const id = varBtn.getAttribute('data-preview-variant');
+          previewFullVariantById(id).catch(function(err){
+            console.warn(err);
+            const metaEl = document.getElementById('detourMeta-'+id);
+            if (metaEl) metaEl.textContent = 'Couldn’t build full-route preview.';
+          });
+          return;
+        }
+
+        const id = addBtn ? addBtn.getAttribute('data-add-poi') : remBtn.getAttribute('data-remove-poi');
+        const cand = filteredPois.find(p => p.id === id);
+        if (!cand) return;
+
+        if (addBtn) {
+          if (!poiWaypoints.some(p => p.id === id)) {
+            poiWaypoints.push({ id:id, name:cand.name, category:cand.category, coord:[cand.lon, cand.lat], along:cand.along || 0 });
+            showToast('Added to route', 1000);
+          }
+        } else {
+          const i = poiWaypoints.findIndex(p => p.id === id);
+          if (i !== -1) { poiWaypoints.splice(i, 1); showToast('Removed', 900); }
+        }
+        updateSelectedPins();
+        const openPopup = document.querySelector('.mapboxgl-popup');
+        if (openPopup) { const popup = clickPopup; if (popup) popup.remove(); }
+        clearDetour(); clearVariant();
+        renderSelectedList();
+      });
+
+      loadPoisFromUrl(false);
+      setTimeout(() => map.resize(), 0);
+    });
+
+    /* Filters + minutes */
+    $filters.addEventListener('change', (e)=>{
+      const cb = e.target;
+      if (!cb || cb.type !== 'checkbox') return;
+      const cat = cb.getAttribute('data-cat');
+      if (cb.checked) activeCats.add(cat); else activeCats.delete(cat);
+      if (routeFeature) updateCandidateLayer();
+    });
+    $minutes.addEventListener('input', ()=>{ if (routeFeature) updateCandidateLayer(); });
+    $minutes.addEventListener('change', ()=>{ if (routeFeature) updateCandidateLayer(); });
+
+    /* POI reload */
+    document.getElementById('reloadPois').addEventListener('click', function(){
+      loadPoisFromUrl(true).then(function(){ showToast('POIs reloaded', 900); });
+    });
+
+    /* Selected list actions */
+    document.getElementById('clearSel').addEventListener('click', function(){
+      poiWaypoints.splice(0, poiWaypoints.length);
+      updateSelectedPins();
+      renderSelectedList();
+    });
+    document.getElementById('applySel').addEventListener('click', function(){
+      if (!(start && end)) { showErr('Get a base route first.'); return; }
+      showBusy('One sec while we update your adventure…');
+      updateRouteWithSelections()
+        .catch(e=>showErr(e.message || String(e)))
+        .finally(()=>hideBusy());
+    });
+
+    /* Route button */
+    document.getElementById('route').onclick = function(){
+      clearErr();
+      if (!(start && end)) { showErr('Set both Start and End'); return; }
+
+      if (!routeFeature) {
+        const base = [start].concat(waypoints.map(w=>w.coord).filter(Boolean)).concat([end]);
+        showBusy('One sec while we create your adventure…');
+        fetchRoute(base)
+          .then(function(){
+            map.fitBounds(boundsOfFeature(routeFeature), { padding: mapPadding() });
+            updateCandidateLayer();
+            updateRouteButtonLabel();
+          })
+          .catch(e=>showErr(e.message || String(e)))
+          .finally(()=>hideBusy());
+      } else {
+        showBusy('One sec while we update your adventure…');
+        updateRouteWithSelections()
+          .catch(e=>showErr(e.message || String(e)))
+          .finally(()=>hideBusy());
+      }
+    };
+
+    /* Geocoders + pick on map (usage saver: minLength=3, limit=5, flyTo=false) */
+    let startGeocoder, endGeocoder, picking = null;
+    const geocoderReadyInterval = setInterval(function(){
+      if (window.MapboxGeocoder) { clearInterval(geocoderReadyInterval); initStartEndGeocoders(); }
+    }, 50);
+
+    function initStartEndGeocoders(){
+      startGeocoder = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken, mapboxgl: mapboxgl, marker:false, flyTo:false,
+        placeholder: "Enter start location",
+        minLength: 3,
+        limit: 5,
+        proximity:{ longitude:-98.5795, latitude:39.8283 }, countries:"us"
+      });
+      endGeocoder = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken, mapboxgl: mapboxgl, marker:false, flyTo:false,
+        placeholder: "Enter destination",
+        minLength: 3, limit: 5,
+        proximity:{ longitude:-98.5795, latitude:39.8283 }, countries:"us"
+      });
+      document.getElementById('geo-start').appendChild(startGeocoder.onAdd(map));
+      document.getElementById('geo-end').appendChild(endGeocoder.onAdd(map));
+
+      startGeocoder.on('result', function(e){ const c=e.result && e.result.center; if(!c) return; start=c; startText=e.result.place_name||''; drawStops(); maybeZoomToStops(); });
+      startGeocoder.on('clear', function(){ start=null; startText=''; routeFeature=null; updateRouteButtonLabel(); drawStops(); });
+      endGeocoder.on('result', function(e){ const c=e.result && e.result.center; if(!c) return; end=c; endText=e.result.place_name||''; drawStops(); maybeZoomToStops(); });
+      endGeocoder.on('clear', function(){ end=null; endText=''; routeFeature=null; updateRouteButtonLabel(); drawStops(); });
+    }
+
+    document.getElementById('useClickStart').addEventListener('click', function(){
+      picking = (picking === 'start') ? null : 'start';
+      document.getElementById('useClickStart').textContent = (picking === 'start') ? 'Click map: picking… (tap again to cancel)' : 'Pick start on map';
+      document.getElementById('useClickEnd').textContent = 'Pick end on map';
+      map.getCanvas().style.cursor = picking ? 'crosshair' : '';
+    });
+    document.getElementById('useClickEnd').addEventListener('click', function(){
+      picking = (picking === 'end') ? null : 'end';
+      document.getElementById('useClickEnd').textContent = (picking === 'end') ? 'Click map: picking… (tap again to cancel)' : 'Pick end on map';
+      document.getElementById('useClickStart').textContent = 'Pick start on map';
+      map.getCanvas().style.cursor = picking ? 'crosshair' : '';
+    });
+    map.on('click', function(e){
+      if (!picking) return;
+      const lngLat = [e.lngLat.lng, e.lngLat.lat];
+      if (picking === 'start') { start = lngLat; startText = lngLat[1].toFixed(5)+', '+lngLat[0].toFixed(5); if (startGeocoder && startGeocoder.setInput) startGeocoder.setInput(startText); }
+      else { end = lngLat; endText = lngLat[1].toFixed(5)+', '+lngLat[0].toFixed(5); if (endGeocoder && endGeocoder.setInput) endGeocoder.setInput(endText); }
+      picking = null; map.getCanvas().style.cursor = ''; drawStops(); maybeZoomToStops();
+      document.getElementById('useClickStart').textContent = 'Pick start on map';
+      document.getElementById('useClickEnd').textContent = 'Pick end on map';
+    });
+
+    /* Use my location (GPS -> IP fallback) */
+    document.getElementById('useMyLocation').addEventListener('click', function(){
+      if (!('geolocation' in navigator)) { locateViaIP().then(useIPOrErr); return; }
+      let settled = false;
+      navigator.geolocation.getCurrentPosition(function(pos){
+        if (settled) return; settled = true;
+        const latitude = pos.coords.latitude, longitude = pos.coords.longitude;
+        let label = latitude.toFixed(5)+', '+longitude.toFixed(5);
+        const url = 'https://api.mapbox.com/geocoding/v5/mapbox.places/'+longitude+','+latitude+'.json?access_token='+mapboxgl.accessToken+'&limit=1&types=address,place,locality,neighborhood,poi';
+        fetch(url).then(r=>r.ok?r.json():null).then(j=>{
+          const n = j && j.features && j.features[0] && j.features[0].place_name;
+          if (n) label = n;
+          applyStart([longitude, latitude], label);
+        }).catch(()=> applyStart([longitude, latitude], label));
+      }, function(){
+        if (settled) return; settled = true;
+        locateViaIP().then(useIPOrErr);
+      }, { enableHighAccuracy:true, timeout:15000, maximumAge:30000 });
+    });
+    function useIPOrErr(ip){
+      if (ip) { applyStart(ip.coord, ip.label); return; }
+      showErr('Could not get location (GPS & IP failed).');
+    }
+    function applyStart(lngLat, label){
+      start = lngLat; startText = label;
+      if (startGeocoder && startGeocoder.setInput) startGeocoder.setInput(label || (lngLat[1].toFixed(5)+', '+lngLat[0].toFixed(5)));
+      drawStops(); maybeZoomToStops();
+    }
+    function locateViaIP(){
+      return fetch('https://ipapi.co/json/').then(r=>{ if(!r.ok) throw 0; return r.json(); })
+        .then(j=>{
+          if (typeof j.latitude==='number' && typeof j.longitude==='number'){
+            const label = [j.city, j.region, j.country_name].filter(Boolean).join(', ') + ' (approx.)';
+            return { coord:[j.longitude, j.latitude], label:label };
+          }
+          throw 0;
+        }).catch(function(){
+          return fetch('https://ipwho.is/').then(r=>{ if(!r.ok) throw 0; return r.json(); })
+            .then(j2=>{
+              if (j2 && j2.success && typeof j2.latitude==='number' && typeof j2.longitude==='number'){
+                const label = [j2.city, j2.region, j2.country].filter(Boolean).join(', ') + ' (approx.)';
+                return { coord:[j2.longitude, j2.latitude], label:label };
+              }
+              return null;
+            }).catch(()=>null);
+        });
+    }
+
+    /* Manual waypoint geocoders (usage saver: minLength=3, limit=5) */
+    document.getElementById('addWp').addEventListener('click', function(){
+      if (waypoints.length >= MAX_GEO_WAYPOINTS) return;
+      addWaypointGeocoder();
+    });
+    function addWaypointGeocoder(){
+      const id = 'wp_'+Date.now()+'_'+Math.floor(Math.random()*1e6);
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML =
+        '<div style="width:12px;height:12px;border-radius:50%;background:#999"></div>'+
+        '<div class="slot pill"><div id="'+id+'_geo"></div></div>'+
+        '<button class="wp-remove" title="Remove">×</button>';
+      $wpContainer.appendChild(row);
+      const gc = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken, mapboxgl: mapboxgl, marker:false, flyTo:false,
+        placeholder:"Add destination",
+        minLength: 3, limit: 5,
+        proximity:{ longitude:-98.5795, latitude:39.8283 }, countries:"us" });
+      row.querySelector('#'+id+'_geo').appendChild(gc.onAdd(map));
+      const wp = { id:id, el:row, geocoder:gc, coord:null, text:'' };
+      waypoints.push(wp);
+      gc.on('result', function(e){ const c=e.result && e.result.center; if(!c) return; wp.coord=c; wp.text=e.result.place_name||''; drawStops(); maybeZoomToStops(); });
+      gc.on('clear', function(){ wp.coord=null; wp.text=''; drawStops(); maybeZoomToStops(); });
+      row.querySelector('.wp-remove').addEventListener('click', function(){
+        try{ if (gc.clear) gc.clear(); if (gc.onRemove) gc.onRemove(map); }catch(e){}
+        row.remove();
+        const i=waypoints.findIndex(w=>w.id===id); if(i!==-1) waypoints.splice(i,1);
+        drawStops(); maybeZoomToStops();
+      });
+    }
+
+    /* Candidate POI layer */
+    function updateCandidateLayer(){
+      if (!routeFeature || !pois.length) {
+        filteredPois = [];
+        const src = map.getSource('pois'); if (src) src.setData(emptyFC());
+        return;
+      }
+      const oneWayMiles = (Math.max(5, Number($minutes.value) || 20)/2) * (AVERAGE_SPEED_MPH/60);
+      const line = routeFeature;
+      const out = [];
+      for (let i=0;i<pois.length;i++){
+        const p = pois[i]; if (!activeCats.has(p.category || 'Other')) continue;
+        try{
+          const np = turf.nearestPointOnLine(line, turf.point([p.lon, p.lat]), { units: 'miles' });
+          const offMiles = np.properties.dist;
+          if (offMiles <= oneWayMiles){
+            out.push({
+              id:'poi_'+i, name:p.name, category:p.category||'Other',
+              lat:p.lat, lon:p.lon, off:offMiles, along:np.properties.location,
+              description: p.description || '', url: p.url || ''
+            });
+          }
+        }catch(e){}
+      }
+      out.sort((a,b)=> a.along===b.along ? a.off-b.off : a.along-b.along);
+      filteredPois = out;
+      const src2 = map.getSource('pois');
+      if (src2){
+        src2.setData({
+          type:'FeatureCollection',
+          features: out.map(c => ({
+            type:'Feature',
+            geometry:{ type:'Point', coordinates:[c.lon,c.lat] },
+            properties:{ id:c.id, name:c.name, category:c.category, description:c.description, off:c.off, url:c.url }
+          }))
+        });
+      }
+      updateSelectedPins();
+    }
+
+    function updateSelectedPins(){
+      const src = map.getSource('pois-sel'); if (!src) return;
+      const feats = poiWaypoints.map(p => ({ type:'Feature', geometry:{ type:'Point', coordinates:p.coord }, properties:{ id:p.id, name:p.name, category:p.category } }));
+      src.setData({ type:'FeatureCollection', features: feats });
+    }
+
+    /* ---- MAIN UPDATER: rebuild base, then inject selections ---- */
+    function updateRouteWithSelections(){
+      const manual = waypoints.map(w=>w.coord).filter(Boolean);
+      return fetchRoute([start].concat(manual).concat([end]))
+        .then(function(){
+          if (!poiWaypoints.length) {
+            map.fitBounds(boundsOfFeature(routeFeature), { padding: mapPadding() });
+            updateCandidateLayer();
+            updateRouteButtonLabel();
+            return;
+          }
+          for (let i=0;i<poiWaypoints.length;i++){
+            const p = poiWaypoints[i];
+            try{
+              const np = turf.nearestPointOnLine(routeFeature, turf.point(p.coord), { units: 'miles' });
+              p.along = np.properties.location || 0;
+            }catch(e){ p.along = 0; }
+          }
+          const ordered = poiWaypoints.slice().sort((a,b)=> (a.along||0)-(b.along||0)).map(p=>p.coord);
+          return fetchRoute([start].concat(manual).concat(ordered).concat([end]))
+            .then(function(){
+              map.fitBounds(boundsOfFeature(routeFeature), { padding: mapPadding() });
+              updateCandidateLayer();
+              renderSelectedList();
+              updateRouteButtonLabel();
+            });
+        });
+    }
+
+    function renderSelectedList(){
+      const items = poiWaypoints.slice().sort((a,b)=> (a.along||0)-(b.along||0));
+      $selCount.textContent = '('+items.length+')';
+      const tgt = $selList; tgt.innerHTML = '';
+      if (!items.length){ tgt.innerHTML = '<div class="stat" style="padding:8px 10px">No attractions selected yet.</div>'; return; }
+      const frag = document.createDocumentFragment();
+      for (let i=0;i<items.length;i++){
+        const it = items[i];
+        const row = document.createElement('div');
+        row.className = 'sel-row';
+        row.innerHTML =
+          '<span class="sel-name" title="'+escapeHtml(it.name)+'">'+escapeHtml(it.name)+'</span>'+
+          (it.category ? '<span class="tag">'+escapeHtml(it.category)+'</span>' : '')+
+          '<button class="sel-remove" data-remove-sel="'+it.id+'" title="Remove">×</button>';
+        frag.appendChild(row);
+      }
+      tgt.appendChild(frag);
+    }
+    document.body.addEventListener('click', function(evt){
+      const btn = evt.target.closest && evt.target.closest('[data-remove-sel]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-remove-sel');
+      const i = poiWaypoints.findIndex(p=>p.id === id);
+      if (i !== -1) poiWaypoints.splice(i, 1);
+      updateSelectedPins();
+      renderSelectedList();
+    });
+
+    /* ======== PREVIEW BASELINE (current selections) ======== */
+    async function getPreviewBaseline(){
+      // Build baseline as Start + manual waypoints + current selected POIs + End
+      const manualCoords = waypoints.map(w=>w.coord).filter(Boolean);
+      const selectedCoords = poiWaypoints.map(p=>p.coord);
+      const selectedIds = poiWaypoints.map(p=>p.id).slice().sort();
+      const manKey = manualCoords.map(c=>c[0].toFixed(4)+','+c[1].toFixed(4)).join('|');
+      const key = routeVersion + '::baselineSel::' + manKey + '::' + selectedIds.join(',');
+
+      // If there are no selections, baseline is the current route
+      if (!selectedCoords.length) {
+        // cache the trivial baseline for consistency
+        if (!baselineCache[key] && routeFeature) {
+          baselineCache[key] = { feature: routeFeature, durationS: baseDurationSec, distanceM: baseDistanceM };
+        }
+        return baselineCache[key] || { feature: routeFeature, durationS: baseDurationSec, distanceM: baseDistanceM };
+      }
+
+      if (baselineCache[key]) return baselineCache[key];
+
+      const coords = [start].concat(manualCoords).concat(selectedCoords).concat([end]);
+      if (coords.length > 25) throw new Error('Too many stops in baseline');
+
+      const data = await requestDirections(coords);
+      const r = data.routes && data.routes[0];
+      if (!r) throw new Error('No baseline route');
+      const feature = { type:'Feature', geometry:r.geometry, properties:{} };
+      const out = { feature, durationS: r.duration || 0, distanceM: r.distance || 0 };
+      baselineCache[key] = out;
+      return out;
+    }
+
+    /* ======== DETOUR PREVIEW (spur) — now vs current selections ======== */
+    async function previewDriveDetour(f, baseline){
+      const base = baseline && baseline.feature ? baseline.feature : routeFeature;
+      if (!base) throw new Error('No baseline');
+
+      const poiCoord = f.geometry.coordinates.slice();
+      const np = turf.nearestPointOnLine(base, turf.point(poiCoord), { units: 'miles' });
+      const locMiles = np.properties.location || 0;
+      const totalMiles = turf.length(base, { units: 'miles' });
+      const bump = Math.max(0.2, totalMiles * 0.001);
+      const aheadMiles = Math.min(totalMiles, locMiles + bump);
+
+      const exitPt = turf.along(base, locMiles, { units: 'miles' });
+      const rejoinPt = turf.along(base, aheadMiles, { units: 'miles' });
+      const exit = exitPt.geometry.coordinates;
+      const rejoin = rejoinPt.geometry.coordinates;
+
+      const id = f.properties.id;
+      const key = routeVersion + '::spur::' + id + '::' + (baseline.distanceM||0) + ':' + (baseline.durationS||0);
+      detourCache[routeVersion] = detourCache[routeVersion] || {};
+      if (detourCache[routeVersion][key]) {
+        drawDriveDetour(detourCache[routeVersion][key].geojson);
+        updateDetourMeta(id, detourCache[routeVersion][key].distanceM, detourCache[routeVersion][key].durationS, locMiles, aheadMiles, baseline);
+        return;
+      }
+
+      const url = 'https://api.mapbox.com/directions/v5/mapbox/'+PROFILE+'/'
+        + exit[0]+','+exit[1]+';'+poiCoord[0]+','+poiCoord[1]+';'+rejoin[0]+','+rejoin[1]
+        + '?geometries=geojson&overview=full&steps=false&access_token='+mapboxgl.accessToken;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Detour directions HTTP '+res.status);
+      const data = await res.json();
+      if (!(data && data.routes && data.routes[0])) throw new Error('No detour route');
+
+      const r = data.routes[0];
+      const geojson = { type:'FeatureCollection', features:[
+        { type:'Feature', properties:{ kind:'drive' }, geometry:r.geometry }
+      ]};
+
+      detourCache[routeVersion][key] = { distanceM: r.distance, durationS: r.duration, geojson: geojson, locMiles, aheadMiles };
+      drawDriveDetour(geojson);
+      updateDetourMeta(id, r.distance, r.duration, locMiles, aheadMiles, baseline);
+    }
+
+    function drawDriveDetour(fc){
+      const s = map.getSource('detour'); if (!s) return;
+      s.setData(fc);
+    }
+
+    function updateDetourMeta(id, detourM, detourS, locMiles, aheadMiles, baseline){
+      // Estimate replaced segment time on the baseline using avg speed over baseline
+      const baseDistM = (baseline && baseline.distanceM) || baseDistanceM;
+      const baseDurS  = (baseline && baseline.durationS)  || baseDurationSec;
+      const avgSpeed = (baseDurS > 0) ? (baseDistM / baseDurS) : (AVERAGE_SPEED_MPH * 0.44704); // m/s
+      const baseSegM = Math.max(0, (aheadMiles - locMiles)) * 1609.344;
+      const baseSegS = baseSegM / (avgSpeed || 1);
+
+      const addS = Math.max(0, detourS - baseSegS);
+      const addMins = Math.round(addS / 60);
+      const addMiles = Math.max(0, (detourM - baseSegM) / 1609.344);
+      const newEta = formatHMM(baseDurS + addS);
+
+      const el = document.getElementById('detourMeta-'+id);
+      if (el) {
+        el.textContent = 'Adds ~'+addMins+' min, '+addMiles.toFixed(1)+' mi · New ETA '+newEta+' (vs current selections)';
+      }
+    }
+
+    /* ======== FULL VARIANT PREVIEW (whole route dashed, INCLUDES CURRENT SELECTIONS) ======== */
+    async function previewFullVariantById(id){
+      if (!routeFeature) return;
+      const poi = filteredPois.find(p => p.id === id);
+      if (!poi) throw new Error('POI not found for preview');
+
+      // Baseline: current selections
+      const baseline = await getPreviewBaseline();
+      const baseFeature = baseline.feature;
+
+      // Build manual coords and selected coords
+      const manualCoords = waypoints.map(w=>w.coord).filter(Boolean);
+      const selectedIds = poiWaypoints.map(p=>p.id).slice().sort();
+      const selectedCoords = poiWaypoints.map(p=>p.coord);
+
+      const alreadySelected = selectedIds.indexOf(id) !== -1;
+      const poiCoord = [poi.lon, poi.lat];
+      const poiAlong = alongOnBase(poiCoord, baseFeature);
+
+      // Assemble baseline stops (already ordered along base)
+      const stopsAll = [start].concat(manualCoords).concat(selectedCoords).concat([end]);
+      const orderedStops = orderStopsAlongBase(stopsAll, baseFeature); // [{coord, along}...]
+
+      // If not selected, insert at the right spot
+      let variantCoords;
+      if (!alreadySelected) {
+        let insertIndex = 1; // after start
+        for (let i=1; i<orderedStops.length; i++){
+          if (orderedStops[i].along <= poiAlong) insertIndex = i+1;
+        }
+        variantCoords = orderedStops.map(s=>s.coord).slice(0, insertIndex)
+          .concat([poiCoord])
+          .concat(orderedStops.map(s=>s.coord).slice(insertIndex));
+      } else {
+        variantCoords = orderedStops.map(s=>s.coord);
+      }
+
+      if (variantCoords.length > 25) {
+        const el = document.getElementById('detourMeta-'+id);
+        if (el) el.textContent = 'Too many stops to preview (limit 25 coordinates).';
+        return;
+      }
+
+      // Cache key includes baseline since delta is vs current selections
+      const manKey = manualCoords.map(c=>c[0].toFixed(4)+','+c[1].toFixed(4)).join('|');
+      const key = routeVersion + '::variantSel::' + manKey + '::' + selectedIds.join(',') + '::' + id;
+      variantCache[routeVersion] = variantCache[routeVersion] || {};
+      if (variantCache[routeVersion][key]) {
+        drawVariant(variantCache[routeVersion][key].geojson);
+        updateVariantMeta(id, variantCache[routeVersion][key].distanceM, variantCache[routeVersion][key].durationS, baseline);
+        return;
+      }
+
+      const data = await requestDirections(variantCoords);
+      const r = data.routes && data.routes[0];
+      if (!r) throw new Error('No variant route');
+
+      const geojson = { type:'FeatureCollection', features:[
+        { type:'Feature', properties:{ kind:'variant' }, geometry:r.geometry }
+      ]};
+
+      variantCache[routeVersion][key] = { distanceM: r.distance, durationS: r.duration, geojson };
+      drawVariant(geojson);
+      updateVariantMeta(id, r.distance, r.duration, baseline);
+    }
+
+    function drawVariant(fc){
+      const s = map.getSource('variant'); if (!s) return;
+      s.setData(fc);
+      // hide spur detour when variant is shown
+      const s2 = map.getSource('detour'); if (s2) s2.setData(emptyFC());
+    }
+
+    function updateVariantMeta(id, variantM, variantS, baseline){
+      const baseDistM = (baseline && baseline.distanceM) || baseDistanceM;
+      const baseDurS  = (baseline && baseline.durationS)  || baseDurationSec;
+
+      const addS = Math.max(0, variantS - baseDurS);
+      const addMins = Math.round(addS / 60);
+      const addMiles = Math.max(0, (variantM - baseDistM) / 1609.344);
+      const newEta = formatHMM(baseDurS + addS);
+
+      const el = document.getElementById('detourMeta-'+id);
+      if (el) {
+        el.textContent = 'Adds ~'+addMins+' min, '+addMiles.toFixed(1)+' mi · New ETA '+newEta+' (vs current selections)';
+      }
+    }
+
+    function alongOnBase(coord, baseFeature){
+      try{
+        const np = turf.nearestPointOnLine(baseFeature || routeFeature, turf.point(coord), { units: 'miles' });
+        return np.properties.location || 0;
+      }catch(e){ return 0; }
+    }
+    function orderStopsAlongBase(coords, baseFeature){
+      const out = [];
+      for (let i=0;i<coords.length;i++){
+        const c = coords[i];
+        if (!Array.isArray(c)) continue;
+        out.push({ coord:c, along: alongOnBase(c, baseFeature) });
+      }
+      out.sort((a,b)=> a.along - b.along);
+      return out;
+    }
+
+    async function requestDirections(coords){
+      const coordStr = coords.map(c => c[0]+','+c[1]).join(';');
+      const url = 'https://api.mapbox.com/directions/v5/mapbox/'+PROFILE+'/'+coordStr+'?geometries=geojson&overview=full&steps=false&access_token='+mapboxgl.accessToken;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Directions HTTP '+res.status);
+      return res.json();
+    }
+
+    function formatHMM(sec){
+      const h = Math.floor(sec / 3600);
+      const m = Math.round((sec % 3600) / 60);
+      return (h>0 ? (h+'h ') : '') + m + 'm';
+    }
+
+    /* Helpers */
+    function normalizeCategory(raw){
+      const s = (raw || '').toString().trim().toLowerCase();
+      if (!s) return 'Other';
+      if (/rest\s*area/.test(s)) return 'Rest Area';
+      if (/roadside/.test(s)) return 'Roadside Attraction';
+      if (/welcome\s*sign/.test(s)) return 'Welcome Sign';
+      return 'Other';
+    }
+    function escapeHtml(str){
+      return String(str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s]));
+    }
+    function escapeAttr(str){
+      return String(str||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function poiHoverHtml(f){
+      const name = (f.properties && f.properties.name) || 'POI';
+      const category = (f.properties && f.properties.category) || 'Other';
+      const off = (f.properties && typeof f.properties.off === 'number') ? f.properties.off : null;
+      return ''+
+        '<div style="font:13px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial">'+
+          '<div style="font-weight:700;margin-bottom:2px">'+escapeHtml(name)+'</div>'+
+          '<div style="color:#6b7280">'+escapeHtml(category)+(off!=null? ' · ~'+off.toFixed(1)+' mi off-route':'')+'</div>'+
+        '</div>';
+    }
+
+    function poiActionHtml(f, already, wantsMeta){
+      const coord = f.geometry.coordinates;
+      const name = (f.properties && f.properties.name) || 'POI';
+      const category = (f.properties && f.properties.category) || 'Other';
+      const desc = (f.properties && f.properties.description) || '';
+      const id = (f.properties && f.properties.id) || '';
+      const url = (f.properties && f.properties.url && /^https?:\/\//i.test(f.properties.url)) ? f.properties.url : '';
+      const lat = coord[1]; const lon = coord[0];
+      const gmaps = (lat!=null && lon!=null) ? ('https://www.google.com/maps/search/?api=1&query='+lat.toFixed(6)+','+lon.toFixed(6)) : '#';
+      const anchor = url
+        ? '<a href="'+escapeAttr(url)+'" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:none">Open link ↗</a>'
+        : '<a href="'+gmaps+'" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:none">Open in Google Maps ↗</a>';
+      const off = f.properties && f.properties.off;
+      const btn = already
+        ? '<button data-remove-poi="'+id+'" style="margin-top:8px">Remove from route</button>'
+        : '<button data-add-poi="'+id+'" style="margin-top:8px">Add to route</button>';
+      const meta = wantsMeta
+        ? (routeFeature ? '<div class="stat" id="detourMeta-'+id+'">Calculating detour vs current selections…</div>'
+                        : '<div class="stat">Build a route to preview detours.</div>')
+        : '';
+      const variantBtn = routeFeature
+        ? '<button class="btn-sm" data-preview-variant="'+id+'" style="margin-top:8px">Preview full route change</button>'
+        : '';
+
+      return ''+
+        '<div style="font:13px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial">'+
+          '<div style="font-weight:700;margin-bottom:2px">'+escapeHtml(name)+'</div>'+
+          '<div style="color:#6b7280;margin-bottom:6px">'+escapeHtml(category)+(typeof off==='number' ? ' · ~'+off.toFixed(1)+' mi off-route' : '')+(desc? ' · '+escapeHtml(desc): '')+'</div>'+
+          meta+
+          '<div style="display:flex; gap:10px; align-items:center; margin-top:6px; flex-wrap:wrap">'+
+            anchor+
+            btn+
+            variantBtn+
+          '</div>'+
+        '</div>';
+    }
+
+    /* Data loading (prefers Column H for URL) */
+    function addRowsToPois(rows, fieldsOrder){
+      if ((!fieldsOrder || !fieldsOrder.length) && rows && rows.length && rows[0] && typeof rows[0] === 'object'){
+        fieldsOrder = Object.keys(rows[0]);
+      }
+      const colHKey = (Array.isArray(fieldsOrder) && fieldsOrder.length >= 8) ? fieldsOrder[7] : null;
+
+      for (let i=0;i<(rows||[]).length;i++){
+        const r = rows[i];
+        const lat = num(r.lat || r.latitude || r.Latitude || r.Y || r.y);
+        const lon = num(r.lon || r.lng || r.longitude || r.Longitude || r.X || r.x);
+        if (lat == null || lon == null || Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
+
+        const name = (r.name || r.title || r.Name || r.Type || '').toString().trim() || 'POI';
+        const category = normalizeCategory((r.category || r.Category || '').toString());
+        const desc = (r.description || r.desc || '').toString().trim();
+
+        let url = '';
+        if (colHKey && r[colHKey]) {
+          const candidateH = String(r[colHKey]).trim();
+          if (/^https?:\/\//i.test(candidateH)) url = candidateH;
+        }
+        if (!url) {
+          const known = (r.url || r.URL || r.link || r.Link || r.website || r.Website ||
+                         r['Google Maps URL'] || r['GoogleMapsURL'] || r['Link URL'] || r['Hyperlink'] || '');
+          const cand2 = String(known).trim();
+          if (/^https?:\/\//i.test(cand2)) url = cand2;
+        }
+        if (!url) {
+          const keys = (Array.isArray(fieldsOrder) && fieldsOrder.length) ? fieldsOrder : Object.keys(r);
+          for (let k=0;k<keys.length;k++){
+            const v = (r[keys[k]] != null ? String(r[keys[k]]).trim() : '');
+            if (/^https?:\/\//i.test(v)) { url = v; break; }
+          }
+        }
+
+        pois.push({ name:name, lat:lat, lon:lon, category:category, description:desc, url:url });
+      }
+    }
+
+    function num(v){ if (v===undefined||v===null) return null; const s=String(v).trim().replace(/,/g,''); const n=Number(s); return isFinite(n)?n:null; }
+    function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
+    function boundsOfFeature(f){ const b = new mapboxgl.LngLatBounds(); if (f && f.geometry && f.geometry.type === 'LineString') f.geometry.coordinates.forEach(c=>b.extend(c)); return b; }
+    function pt(label, lnglat){ return { type:'Feature', geometry:{ type:'Point', coordinates: lnglat }, properties:{ label:label } }; }
+
+    function drawStops(){
+      const features = [];
+      if (start) features.push(pt('A', start));
+      waypoints.forEach((w,i)=>{ if (w.coord) features.push(pt(String(i+1), w.coord)); });
+      if (end) features.push(pt('B', end));
+      const src = map.getSource('stops'); if (src) src.setData({ type:'FeatureCollection', features: features });
+    }
+
+    function fetchRoute(coords){
+      const coordStr = coords.map(c => c[0]+','+c[1]).join(';');
+      const url = 'https://api.mapbox.com/directions/v5/mapbox/'+PROFILE+'/'+coordStr+'?geometries=geojson&overview=full&steps=false&access_token='+mapboxgl.accessToken;
+      return fetch(url).then(res=>{
+        if (!res.ok) throw new Error('Directions HTTP '+res.status);
+        return res.json();
+      }).then(data=>{
+        if (!(data.routes && data.routes.length)) throw new Error('No route found');
+        const r = data.routes[0];
+        routeFeature = { type:'Feature', geometry:r.geometry, properties:{} };
+        map.getSource('route').setData({ type:'FeatureCollection', features:[routeFeature] });
+
+        baseDistanceM = r.distance || 0;
+        baseDurationSec = r.duration || 0;
+
+        routeVersion += 1; // invalidate caches
+        detourCache = {};
+        variantCache = {};
+        baselineCache = {};
+
+        const km = (r.distance||0)/1000, mi = km*0.621371;
+        const hrs = Math.floor((r.duration||0)/3600), mins = Math.round(((r.duration||0)%3600)/60);
+        $summary.textContent = 'Distance: '+mi.toFixed(1)+' mi ('+km.toFixed(1)+' km) — ETA: '+hrs+'h '+mins+'m';
+
+        drawStops();
+      });
+    }
+
+    function loadPoisFromUrl(force){
+      force = !!force;
+      const now = Date.now();
+      const cached = localStorage.getItem(POI_CACHE_KEY);
+      if (!force && cached){
+        try{
+          const obj = JSON.parse(cached);
+          if (obj && Array.isArray(obj.pois) && obj.pois.length){
+            const freshEnough = obj.ts && (now - obj.ts) < POI_CACHE_TTL_MS;
+            if (freshEnough){
+              pois = obj.pois;
+              if (routeFeature) updateCandidateLayer();
+              return Promise.resolve();
+            }
+          }
+        }catch(e){}
+      }
+      return fetch(POI_URL, { mode: 'cors' }).then(res=>{
+        if (!res.ok) throw new Error('HTTP '+res.status+' fetching POIs');
+        return res.text();
+      }).then(text=>{
+        const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+        pois = [];
+        addRowsToPois(parsed.data, (parsed.meta && parsed.meta.fields) ? parsed.meta.fields : []);
+        localStorage.setItem(POI_CACHE_KEY, JSON.stringify({ pois:pois, ts: now }));
+        if (routeFeature) updateCandidateLayer();
+      }).catch(err=>{
+        if (cached){
+          try{
+            const obj2 = JSON.parse(cached);
+            if (obj2 && Array.isArray(obj2.pois) && obj2.pois.length){
+              pois = obj2.pois;
+              if (routeFeature) updateCandidateLayer();
+              showErr('Live fetch failed ('+(err && err.message ? err.message : err)+'). Using cached POIs.');
+              return;
+            }
+          }catch(e){}
+        }
+        showErr('Failed to load POIs from URL. '+(err && err.message ? err.message : err)+'.');
+      });
+    }
+
+    // Init label
+    updateRouteButtonLabel();
+  </script>
+</body>
+</html>

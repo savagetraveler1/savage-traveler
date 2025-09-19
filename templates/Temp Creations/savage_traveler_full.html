@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Savage Traveler — Route Explorer (No Star)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Mapbox GL core -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <!-- Mapbox Geocoder (with CDN fallback) -->
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.1/mapbox-gl-geocoder.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-geocoder@5.0.1/dist/mapbox-gl-geocoder.css" />
+  <script>
+    (function loadGeocoder() {
+      var s = document.createElement('script');
+      s.src = 'https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.1/mapbox-gl-geocoder.min.js';
+      s.async = true;
+      s.onerror = function () {
+        var f = document.createElement('script');
+        f.src = 'https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-geocoder@5.0.1/dist/mapbox-gl-geocoder.min.js';
+        f.async = true;
+        document.head.appendChild(f);
+      };
+      document.head.appendChild(s);
+    })();
+  </script>
+  <!-- Other libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    #map { position: relative; }
+    /* CSS omitted for brevity */
+  </style>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <div id="map"></div>
+  <div class="ui">
+    <div class="panel">
+      <!-- UI omitted for brevity -->
+    </div>
+  </div>
+  <!-- toasts / busy -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="busy" class="busy" aria-hidden="true">
+    <div class="card"><div class="spinner"></div><div id="busyMsg">One sec while we create your adventure…</div></div>
+  </div>
+  <div id="error" class="error"></div>
+  <script>
+    // JavaScript omitted for brevity (full script from your paste goes here)
+  </script>
+</body>
+</html>

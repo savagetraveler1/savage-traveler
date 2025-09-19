@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Savage Traveler — Route Explorer (No Star)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- (rest of head trimmed for brevity in this injected build) -->
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    // Example replacement for POI_URL with proxy logic
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQptJKid_rUcBSdL2fzwSU2RhG3NqeiiRL_0OQ1yRleFNwBbZWxuMKzPqiAhYn15sfNkO8NzDgAZ0Qg/pub?output=csv';
+    const CORS_PROXY = 'https://cors.isomorphic-git.org/';
+    const POI_URL = (location.protocol === 'http:' || location.protocol === 'https:') ? SHEET_URL : (CORS_PROXY + SHEET_URL);
+  </script>
+</body>
+</html>

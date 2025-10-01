@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Savage Traveler — Route Explorer (Collapsible Editing)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Mapbox GL core -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+
+    <!-- Mapbox Geocoder -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-geocoder@5.0.1/dist/mapbox-gl-geocoder.css"
+    />
+    <script>
+      ;(function loadGeocoder() {
+        const s = document.createElement('script')
+        s.src =
+          'https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-geocoder@5.0.1/dist/mapbox-gl-geocoder.min.js'
+        s.async = true
+        document.head.appendChild(s)
+      })()
+    </script>
+
+    <!-- Other libs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="../static/styles.css" />
+
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <div class="ui">
+      <div class="panel">
+        <div class="stack">
+          <!-- Start & End -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_START_END] -->
+              <span>Start & End</span>
+              <span class="hint">Pick by search or on map</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <!-- Start -->
+              <div class="input-row">
+                <div class="dot" aria-hidden="true"></div>
+                <div class="slot pill"><div id="geo-start"></div></div>
+              </div>
+              <div class="mini-links">
+                <button id="useClickStart" class="btn-sm">Pick start on map</button>
+                <button id="btnUseMyLocation" type="button" class="btn-sm">Use my location</button>
+              </div>
+
+              <!-- End -->
+              <div class="input-row">
+                <div class="pin" aria-hidden="true"></div>
+                <div class="slot pill"><div id="geo-end"></div></div>
+              </div>
+              <div class="mini-links">
+                <button id="useClickEnd" class="btn-sm">Pick end on map</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Waypoints -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_WAYPOINTS] -->
+              <span>Waypoints</span>
+              <span class="hint">Optional stops between A → B</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <div id="waypoints"></div>
+              <div class="input-row">
+                <div
+                  style="
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: #999;
+                    flex: 0 0 12px;
+                  "
+                  aria-hidden="true"
+                ></div>
+                <button id="addWp" class="btn-sm">＋ Add destination</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Search Radius -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_RADIUS] -->
+              <span>Search Radius</span>
+              <span class="hint">POIs within minutes off-route</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <div class="minutes-row">
+                <input id="minutes" type="number" min="5" step="5" value="20" />
+                <div class="stat">Distance from route (minutes, one-way)</div>
+              </div>
+              <div class="row stat" id="summary">Distance/ETA will appear here</div>
+            </div>
+          </details>
+
+          <!-- Route -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_ROUTE] -->
+              <span>Route</span>
+              <span class="hint">Build or update</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <div class="row">
+                <button id="route" class="primary">Get route</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Legend & Filters -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_FILTERS] -->
+              <span>Legend & Filters</span>
+              <span class="hint">Toggle POI types</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <div class="legend" style="margin-bottom: 6px">
+                <div class="item"><span class="swatch rest"></span> Rest Area</div>
+                <div class="item"><span class="swatch road"></span> Roadside Attraction</div>
+                <div class="item"><span class="swatch welcome"></span> Welcome Sign</div>
+                <div class="item"><span class="swatch other"></span> Other</div>
+              </div>
+              <div class="filters" id="filters">
+                <label
+                  ><input type="checkbox" data-cat="Rest Area" checked /><span
+                    style="width: 8px; height: 8px; border-radius: 50%; background: var(--c-rest)"
+                  ></span
+                  >Rest Area</label
+                >
+                <label
+                  ><input type="checkbox" data-cat="Roadside Attraction" checked /><span
+                    style="
+                      width: 8px;
+                      height: 8px;
+                      border-radius: 50%;
+                      background: var(--c-roadside);
+                    "
+                  ></span
+                  >Roadside</label
+                >
+                <label
+                  ><input type="checkbox" data-cat="Welcome Sign" checked /><span
+                    style="
+                      width: 8px;
+                      height: 8px;
+                      border-radius: 50%;
+                      background: var(--c-welcome);
+                    "
+                  ></span
+                  >Welcome</label
+                >
+                <label
+                  ><input type="checkbox" data-cat="Other" checked /><span
+                    style="width: 8px; height: 8px; border-radius: 50%; background: var(--c-other)"
+                  ></span
+                  >Other</label
+                >
+              </div>
+              <div class="mini-links" style="margin-top: 6px">
+                <button
+                  id="reloadPois"
+                  class="linky"
+                  disabled
+                  title="Fetch fresh copy from Google Sheets"
+                >
+                  Reload POIs
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Selected -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_SELECTED] -->
+              <span>Selected Attractions</span>
+              <span class="hint"><span id="selCount">(0)</span> chosen</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <div class="sel-wrap"><div id="selList"></div></div>
+              <div class="mini-links" style="margin-top: 6px">
+                <button id="applySel" class="linky">Update route with selected</button>
+                <button id="clearSel" class="linky">Clear selected</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Google Maps Actions -->
+          <details class="group" open>
+            <summary>
+              <!-- TODO [HTML_GMAPS] -->
+              <span>Google Maps Actions</span>
+              <span class="hint">Share / open</span>
+              <span class="caret">▸</span>
+            </summary>
+            <div class="group-body">
+              <div class="actions-row" style="margin-top: 8px">
+                <button id="copyLink" class="action" disabled title="Build a route first">
+                  Copy link
+                </button>
+                <button id="openGMaps" class="action" disabled title="Build a route first">
+                  Open in Google Maps
+                </button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <!-- toasts / busy -->
+    <details class="group" open>
+      <summary>
+        <!-- TODO [HTML_SYSTEM_UI] -->
+        <span>System UI (Toast/Busy/Error)</span><span class="hint">Non-visual wrapper</span
+        ><span class="caret">▸</span>
+      </summary>
+      <div class="group-body">
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div id="busy" class="busy" aria-hidden="true">
+          <div class="card">
+            <div class="spinner"></div>
+            <div id="busyMsg">One sec while we create your adventure!</div>
+          </div>
+        </div>
+        <div id="error" class="error"></div>
+      </div>
+    </details>
+
+    <!-- (Removed inline POI gating JS; all logic now lives in static/app.js) -->
+
+    <!-- App script -->
+    <script src="static/app.js?v=20251001a"></script>
+  </body>
+</html>

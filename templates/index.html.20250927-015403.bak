@@ -39,8 +39,7 @@
         <!-- Start & End -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_START_END] -->
-<span>Start & End</span>
+            <span>Start & End</span>
             <span class="hint">Pick by search or on map</span>
             <span class="caret">▸</span>
           </summary>
@@ -70,8 +69,7 @@
         <!-- Waypoints -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_WAYPOINTS] -->
-<span>Waypoints</span>
+            <span>Waypoints</span>
             <span class="hint">Optional stops between A → B</span>
             <span class="caret">▸</span>
           </summary>
@@ -87,8 +85,7 @@
         <!-- Search Radius -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_RADIUS] -->
-<span>Search Radius</span>
+            <span>Search Radius</span>
             <span class="hint">POIs within minutes off-route</span>
             <span class="caret">▸</span>
           </summary>
@@ -104,8 +101,7 @@
         <!-- Route -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_ROUTE] -->
-<span>Route</span>
+            <span>Route</span>
             <span class="hint">Build or update</span>
             <span class="caret">▸</span>
           </summary>
@@ -119,8 +115,7 @@
         <!-- Legend & Filters -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_FILTERS] -->
-<span>Legend & Filters</span>
+            <span>Legend & Filters</span>
             <span class="hint">Toggle POI types</span>
             <span class="caret">▸</span>
           </summary>
@@ -147,8 +142,7 @@
         <!-- Selected -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_SELECTED] -->
-<span>Selected Attractions</span>
+            <span>Selected Attractions</span>
             <span class="hint"><span id="selCount">(0)</span> chosen</span>
             <span class="caret">▸</span>
           </summary>
@@ -164,8 +158,7 @@
         <!-- Google Maps Actions -->
         <details class="group" open>
           <summary>
-            <!-- TODO [HTML_GMAPS] -->
-<span>Google Maps Actions</span>
+            <span>Google Maps Actions</span>
             <span class="hint">Share / open</span>
             <span class="caret">▸</span>
           </summary>
@@ -183,8 +176,7 @@
 
   <!-- toasts / busy -->
   <details class="group" open>
-    <summary><!-- TODO [HTML_SYSTEM_UI] -->
-<span>System UI (Toast/Busy/Error)</span><span class="hint">Non-visual wrapper</span><span class="caret">▸</span></summary>
+    <summary><span>System UI (Toast/Busy/Error)</span><span class="hint">Non-visual wrapper</span><span class="caret">▸</span></summary>
     <div class="group-body">
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
       <div id="busy" class="busy" aria-hidden="true">
